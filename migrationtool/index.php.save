@@ -1,0 +1,34 @@
+<?php
+
+require('../../config.php');
+
+require_login();
+require_capability('moodle/site:config', context_system::instance());
+
+$PAGE->set_url('/local/migrationtool/index.php');
+$PAGE->set_title('Migration Tool');
+$PAGE->set_heading('Migration Tool');
+
+echo $OUTPUT->header();
+
+
+echo html_writer::link(
+    new moodle_url('#'),
+    'Import categories'
+);
+
+echo html_writer::empty_tag('br');
+
+echo html_writer::link(
+    new moodle_url('#'),
+    'Restore courses'
+);
+
+echo html_writer::empty_tag('br');
+
+echo html_writer::link(
+    new moodle_url('#'),
+    'Compatibility check'
+);
+c
+echo $OUTPUT->footer();
