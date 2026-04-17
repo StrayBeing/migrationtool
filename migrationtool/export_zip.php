@@ -16,51 +16,89 @@ echo $OUTPUT->header();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $courses = required_param_array('courses', PARAM_INT);
-
     $manager = new \local_migrationtool\backup_manager();
 
-    // Katalog tymczasowy dla mbz
     $tmpdir = $CFG->dataroot.'/migrationtool/tmp/'.uniqid();
-    if (!is_dir($tmpdir)) {
-        mkdir($tmpdir, 0775, true);
-    }
+    mkdir($tmpdir,0775,true);
 
     $mbzfiles = [];
+    $map = [];
+    $categories = [];
+
     foreach ($courses as $cid) {
-        $mbzfiles[] = $manager->export_course($cid, $tmpdir);
+
+        $course = $DB->get_record('course',['id'=>$cid],'*',MUST_EXIST);
+
+        $map[$cid] = $course->category;
+
+        $mbzfiles[] = $manager->export_course($cid,$tmpdir);
+
+        $cat = $DB->get_record('course_categories',['id'=>$course->category]);
+
+        while ($cat) {
+            $categories[$cat->id] = $cat;
+
+            if ($cat->parent == 0) break;
+
+            $cat = $DB->get_record('course_categories',['id'=>$cat->parent]);
+        }
     }
 
-    // Tworzenie ZIP
+    // zapis kategorii
+    $catsfile = $tmpdir.'/moodle_categories.json';
+    file_put_contents($catsfile,json_encode($categories));
+
+    // zapis mapy kursów
+    $mapfile = $tmpdir.'/course_category_map.txt';
+
+    $maptext="";
+    foreach($map as $cid=>$catid){
+        $maptext.=$cid."\t".$catid."\n";
+    }
+
+    file_put_contents($mapfile,$maptext);
+
+    // tworzenie ZIP
     $zipfile = $CFG->dataroot.'/migrationtool/backups/courses_export_'.time().'.zip';
+
     $zip = new ZipArchive();
-    if ($zip->open($zipfile, ZipArchive::CREATE) !== true) {
-        echo $OUTPUT->notification("Nie udało się utworzyć ZIP", 'notifyerror');
-        echo $OUTPUT->footer();
-        exit;
+    $zip->open($zipfile,ZipArchive::CREATE);
+
+    foreach($mbzfiles as $file){
+        $zip->addFile($file,"courses/".basename($file));
     }
 
-    foreach ($mbzfiles as $file) {
-        $zip->addFile($file, basename($file));
-    }
+    $zip->addFile($catsfile,"moodle_categories.json");
+    $zip->addFile($mapfile,"course_category_map.txt");
 
     $zip->close();
 
-    echo $OUTPUT->notification("ZIP utworzony: ".basename($zipfile), 'notifysuccess');
+    echo $OUTPUT->notification("ZIP utworzony: ".basename($zipfile),'notifysuccess');
 
-    $url = new moodle_url('/local/migrationtool/download.php', ['file' => basename($zipfile)]);
-    echo html_writer::link($url, 'Pobierz ZIP');
+    $url = new moodle_url('/local/migrationtool/download.php',
+        ['file'=>basename($zipfile)]
+    );
+
+    echo html_writer::link($url,'Pobierz ZIP');
 
 } else {
+
     $courses = $DB->get_records('course');
 
     echo "<form method='post'>";
-    echo "<h3>Wybierz kursy do eksportu</h3>";
-    echo "<select name='courses[]' multiple size='10'>";
-    foreach ($courses as $course) {
-        if ($course->id == 1) continue; // pomijamy frontpage
+    echo "<h3>Wybierz kursy</h3>";
+
+    echo "<select name='courses[]' multiple size='15'>";
+
+    foreach($courses as $course){
+
+        if($course->id==1) continue;
+
         echo "<option value='{$course->id}'>{$course->fullname}</option>";
     }
+
     echo "</select><br><br>";
+
     echo "<input type='submit' value='Export ZIP'>";
     echo "</form>";
 }
