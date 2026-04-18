@@ -52,4 +52,9 @@ echo html_writer::link(
     new moodle_url('/local/migrationtool/import_zip.php'),
     'Import ZIP'
 );
+echo html_writer::link(
+    new moodle_url('/local/migrationtool/report.php'),
+    '📊 Migration reports'
+);
+echo html_writer::empty_tag('br');
 echo $OUTPUT->footer();
