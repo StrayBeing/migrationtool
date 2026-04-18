@@ -76,11 +76,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     file_put_contents($mapfile,$maptext);
 
-    $zipfile = $CFG->dataroot.'/migrationtool/backups/courses_export_'.time().'.zip';
+$backupdir = $CFG->dataroot.'/migrationtool/backups';
 
-    $zip = new ZipArchive();
-    $zip->open($zipfile,ZipArchive::CREATE);
+if (!is_dir($backupdir)) {
+    mkdir($backupdir, 0775, true);
+}
 
+$zipfile = $backupdir.'/courses_export_'.time().'.zip';
+
+$zip = new ZipArchive();
+
+if ($zip->open($zipfile, ZipArchive::CREATE) !== TRUE) {
+    throw new moodle_exception('Cannot create ZIP file');
+}
     foreach($mbzfiles as $file){
         $zip->addFile($file,"courses/".basename($file));
     }
