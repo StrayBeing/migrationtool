@@ -24,7 +24,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $mbzfiles = [];
     $map = [];
     $categories = [];
-
+    $plugins = [
+    'mod' => [],
+    'qtype' => []
+    ];
     $total=count($courses);
     $current=0;
 
@@ -35,7 +38,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     echo "</div>";
 
     foreach ($courses as $cid) {
+        
+$cms = get_fast_modinfo($cid)->get_cms();
 
+foreach ($cms as $cm) {
+
+    if (!in_array($cm->modname,$plugins['mod'])) {
+        $plugins['mod'][] = $cm->modname;
+    }
+
+}
+
+/* pytania z quizów */
+
+$quizids = $DB->get_records('quiz',['course'=>$cid],'','id');
+
+foreach($quizids as $quiz){
+
+$questions = $DB->get_records_sql("
+SELECT q.qtype
+FROM {quiz_slots} s
+JOIN {question_references} qr ON qr.itemid=s.id
+JOIN {question_bank_entries} qbe ON qbe.id=qr.questionbankentryid
+JOIN {question_versions} qv ON qv.questionbankentryid=qbe.id
+JOIN {question} q ON q.id=qv.questionid
+WHERE s.quizid=?
+",[$quiz->id]);
+
+foreach($questions as $q){
+
+if(!in_array($q->qtype,$plugins['qtype'])){
+$plugins['qtype'][]=$q->qtype;
+}
+
+}
+
+}
         $current++;
 
         $course = $DB->get_record('course',['id'=>$cid],'*',MUST_EXIST);
@@ -75,7 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     file_put_contents($mapfile,$maptext);
-
+$pluginfile = $tmpdir.'/plugins.json';
+file_put_contents($pluginfile,json_encode($plugins,JSON_PRETTY_PRINT));
 $backupdir = $CFG->dataroot.'/migrationtool/backups';
 
 if (!is_dir($backupdir)) {
@@ -95,7 +134,7 @@ if ($zip->open($zipfile, ZipArchive::CREATE) !== TRUE) {
 
     $zip->addFile($catsfile,"moodle_categories.json");
     $zip->addFile($mapfile,"course_category_map.txt");
-
+$zip->addFile($pluginfile,"plugins.json");
     $zip->close();
 
     echo $OUTPUT->notification("ZIP utworzony",'notifysuccess');

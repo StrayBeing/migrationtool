@@ -51,8 +51,11 @@ progress{width:100%;height:20px}
 </form>
 </div>
 
-<?php if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_FILES['zipfile']['tmp_name'])): ?>
+<?php 
+$confirm = optional_param('confirm',0,PARAM_INT);
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (!empty($_FILES['zipfile']['tmp_name']) || $confirm)):
+?>
 <div class="card">
 <h3>📊 Postęp importu</h3>
 <progress id="progress" value="0" max="100"></progress>
@@ -70,9 +73,16 @@ function log(msg){
 
 <?php
 
+if(!$confirm){
+
 $tmpzip = $tmpbase . uniqid() . '.zip';
 move_uploaded_file($_FILES['zipfile']['tmp_name'], $tmpzip);
 
+}else{
+
+$tmpzip = required_param('tmpzip',PARAM_RAW);
+
+}
 $zip = new ZipArchive();
 
 if ($zip->open($tmpzip) !== TRUE) {
@@ -87,8 +97,87 @@ $zip->extractTo($tmpdir);
 $zip->close();
 
 echo "<script>log('📦 ZIP rozpakowany');</script>";
-echo str_repeat(' ', 1024); flush();
 
+/* ---------------- PLUGIN CHECK ---------------- */
+
+$pluginfile = $tmpdir.'/plugins.json';
+
+$missing_mod=[];
+$missing_qtype=[];
+
+if(file_exists($pluginfile)){
+
+$source=json_decode(file_get_contents($pluginfile),true);
+
+foreach($source['mod'] as $mod){
+
+if(!$DB->record_exists('modules',['name'=>$mod])){
+$missing_mod[]=$mod;
+}
+
+}
+
+foreach($source['qtype'] as $qt){
+
+$qdir=$CFG->dirroot.'/question/type/'.$qt;
+
+if(!is_dir($qdir)){
+$missing_qtype[]=$qt;
+}
+
+}
+
+}
+
+/* ---------- STOP IF MISSING ---------- */
+
+if((!empty($missing_mod) || !empty($missing_qtype)) && !$confirm){
+
+echo "<div class='card' style='border:2px solid #e74c3c'>";
+
+echo "<h3>⚠ Brakujące pluginy</h3>";
+
+if(!empty($missing_mod)){
+
+echo "<b>Brak aktywności:</b><br>";
+
+foreach($missing_mod as $m){
+echo "mod_{$m}<br>";
+}
+
+echo "<br>";
+
+}
+
+if(!empty($missing_qtype)){
+
+echo "<b>Brak typów pytań:</b><br>";
+
+foreach($missing_qtype as $q){
+echo "qtype_{$q}<br>";
+}
+
+}
+
+echo "<br>Import może uszkodzić quizy lub aktywności.<br><br>";
+
+echo "<form method='post'>";
+
+echo "<input type='hidden' name='confirm' value='1'>";
+echo "<input type='hidden' name='tmpzip' value='".htmlspecialchars($tmpzip)."'>";
+
+echo "<button class='btn btn-danger'>Continue anyway</button>";
+
+echo "</form>";
+
+echo "<br><a href='import_zip.php'>Cancel</a>";
+
+echo "</div>";
+
+echo $OUTPUT->footer();
+exit;
+
+}
 /* ---------------- REPORT ---------------- */
 $report = new migration_reporter();
 $report->start();
