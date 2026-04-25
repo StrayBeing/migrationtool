@@ -25,7 +25,8 @@ $sessionid = optional_param('sessionid','',PARAM_RAW);
 
 /* ---------- EXPORT ---------- */
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' || $sessionid) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
     $manager = new \local_migrationtool\backup_manager();
 
     if ($sessionid) {
@@ -202,27 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || $sessionid) {
     echo html_writer::link($url,'⬇ Pobierz ZIP');
 
 }else{
-/* ---------- detect unfinished export ---------- */
 
-$sessions = glob($sessiondir.'export_*.json');
-
-if ($sessions && !$sessionid) {
-
-    $lastsession = basename($sessions[0], '.json');
-
-    echo "<div style='background:#fff3cd;padding:15px;border:1px solid #ffeeba;margin-bottom:20px;'>";
-
-    echo "<b>⚠ Niedokończony eksport został znaleziony</b><br><br>";
-
-    echo "<a href='?sessionid={$lastsession}'
-    style='padding:10px 15px;background:#28a745;color:white;text-decoration:none;border-radius:4px;'>";
-
-    echo "▶ Wznów eksport";
-
-    echo "</a>";
-
-    echo "</div>";
-}
 $categories=$DB->get_records('course_categories',null,'name');
 $courses=$DB->get_records('course');
 
