@@ -2,7 +2,7 @@
 require('../../config.php');
 require_login();
 require_capability('moodle/site:config', context_system::instance());
-
+require_once(__DIR__.'/classes/service/category_service.php');
 global $CFG, $DB, $OUTPUT, $PAGE;
 
 use local_migrationtool\migration_reporter;
@@ -153,35 +153,15 @@ file_put_contents($sessionfile,json_encode([
 'done'=>$done
 ]));
 
-/* ---------- CATEGORY RESTORE ---------- */
+$catmap = [];
 
-$catmap=[];
-$catsfile=$tmpdir.'/moodle_categories.json';
+$catsfile = $tmpdir.'/moodle_categories.json';
 
-if(file_exists($catsfile)){
+$categoryservice =
+    new \local_migrationtool\service\category_service();
 
-$cats=json_decode(file_get_contents($catsfile));
-
-foreach($cats as $cat){
-
-$existing=$DB->get_record('course_categories',['name'=>$cat->name]);
-
-if($existing){
-$catmap[$cat->id]=$existing->id;
-continue;
-}
-
-$rec=new stdClass();
-$rec->name=$cat->name;
-$rec->parent=0;
-
-$newid=$DB->insert_record('course_categories',$rec);
-$catmap[$cat->id]=$newid;
-
-}
-
-}
-
+$catmap =
+    $categoryservice->restore_categories($catsfile);
 /* ---------- CATEGORY MAP ---------- */
 
 $map=[];

@@ -2,7 +2,8 @@
 require('../../config.php');
 require_login();
 require_capability('moodle/site:config', context_system::instance());
-
+require_once(__DIR__.'/classes/service/plugin_export_service.php');
+require_once(__DIR__.'/classes/service/export_metadata_service.php');
 global $DB, $CFG, $OUTPUT, $PAGE;
 
 require_once('classes/backup_manager.php');
@@ -62,72 +63,29 @@ foreach($courses as $course){
     }
 }
 
-/* ---------- SAVE CATEGORIES ---------- */
+$metaservice =
+    new \local_migrationtool\service\export_metadata_service();
 
-file_put_contents(
-$tmpdir.'/moodle_categories.json',
-json_encode($categories)
+$metaservice->save_categories(
+    $tmpdir.'/moodle_categories.json',
+    $categories
 );
 
-/* ---------- COURSE CATEGORY MAP ---------- */
-
-$maptext="";
-
-foreach($map as $cid=>$catid){
-    $maptext.=$cid."\t".$catid."\n";
-}
-
-file_put_contents(
-$tmpdir.'/course_category_map.txt',
-$maptext
+$metaservice->save_course_map(
+    $tmpdir.'/course_category_map.txt',
+    $map
 );
 
-/* ---------- EXPORT PLUGINS ---------- */
+$pluginservice =
+    new \local_migrationtool\service\plugin_export_service();
 
-
-$plugins = [
-    'mod' => [],
-    'qtype' => []
-];
-
-/* aktywności */
-
-$mods = $DB->get_records('modules');
-
-foreach ($mods as $mod) {
-    $plugins['mod'][] = $mod->name;
-}
-
-/* typy pytań (plugin scan zamiast DB) */
-
-$qtypedirs = glob($CFG->dirroot.'/question/type/*', GLOB_ONLYDIR);
-
-foreach ($qtypedirs as $dir) {
-
-    $name = basename($dir);
-
-    if ($name === 'random' || $name === 'missingtype') {
-        continue;
-    }
-
-    $plugins['qtype'][] = $name;
-}
-
-file_put_contents(
-$tmpdir.'/plugins.json',
-json_encode($plugins, JSON_PRETTY_PRINT)
+$pluginservice->export_plugins(
+    $tmpdir.'/plugins.json'
 );
-
-/* ---------- MIGRATION INFO ---------- */
-
-file_put_contents(
-$tmpdir.'/migration_info.json',
-json_encode([
-"courses"=>$total,
-"date"=>date('c')
-])
+$metaservice->save_migration_info(
+    $tmpdir.'/migration_info.json',
+    $total
 );
-
 echo $OUTPUT->notification("Export finished",'notifysuccess');
 
 echo "<p>Folder exportu:</p>";

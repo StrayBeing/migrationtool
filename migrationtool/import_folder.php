@@ -2,7 +2,8 @@
 require('../../config.php');
 require_login();
 require_capability('moodle/site:config', context_system::instance());
-
+require_once(__DIR__.'/classes/service/category_service.php');
+require_once(__DIR__.'/classes/service/plugin_service.php');
 global $CFG,$DB,$OUTPUT,$PAGE;
 
 $PAGE->set_url('/local/migrationtool/import_folder.php');
@@ -16,42 +17,14 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 $folder = required_param('folder', PARAM_RAW);
 $confirm = optional_param('confirm',0,PARAM_INT);
 
-/* ---------- PLUGIN CHECK ---------- */
-
 $pluginfile = $folder.'/plugins.json';
 
-$missing_mod = [];
-$missing_qtype = [];
+$pluginservice =
+    new \local_migrationtool\service\plugin_service();
 
-if(file_exists($pluginfile)){
+[$missing_mod, $missing_qtype] =
+    $pluginservice->check_plugins($pluginfile);
 
-$source=json_decode(file_get_contents($pluginfile),true);
-
-/* aktywności */
-
-foreach($source['mod'] as $mod){
-
-$exists=$DB->record_exists('modules',['name'=>$mod]);
-
-if(!$exists){
-$missing_mod[]=$mod;
-}
-
-}
-
-/* typy pytań */
-
-foreach($source['qtype'] as $qt){
-
-$qdir = $CFG->dirroot.'/question/type/'.$qt;
-
-if(!is_dir($qdir)){
-$missing_qtype[]=$qt;
-}
-
-}
-
-}
 /* ---------- WARNINGS ---------- */
 
 if((!empty($missing_mod) || !empty($missing_qtype)) && !$confirm){
@@ -105,42 +78,14 @@ echo $OUTPUT->footer();
 exit;
 
 }
-/* ---------- CATEGORY RESTORE ---------- */
+$catsfile = $folder.'/moodle_categories.json';
+$mapfile = $folder.'/course_category_map.txt';
 
-$catsfile=$folder.'/moodle_categories.json';
-$mapfile=$folder.'/course_category_map.txt';
+$categoryservice =
+    new \local_migrationtool\service\category_service();
 
-$catmap=[];
-
-if(file_exists($catsfile)){
-
-$cats=json_decode(file_get_contents($catsfile));
-
-foreach($cats as $cat){
-
-$existing=$DB->get_record(
-'course_categories',
-['name'=>$cat->name]
-);
-
-if($existing){
-$catmap[$cat->id]=$existing->id;
-continue;
-}
-
-$rec=new stdClass();
-$rec->name=$cat->name;
-$rec->parent=0;
-
-$newid=$DB->insert_record(
-'course_categories',$rec
-);
-
-$catmap[$cat->id]=$newid;
-
-}
-}
-
+$catmap =
+    $categoryservice->restore_categories($catsfile);
 /* ---------- COURSE MAP ---------- */
 
 $map=[];

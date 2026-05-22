@@ -2,7 +2,7 @@
 require('../../config.php');
 require_login();
 require_capability('moodle/site:config', context_system::instance());
-
+require_once(__DIR__.'/classes/service/zip_service.php');
 global $DB, $OUTPUT, $PAGE, $CFG;
 
 require_once('classes/backup_manager.php');
@@ -50,12 +50,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || $sessionid) {
         $sessionfile = $sessiondir.$sessionid.'.json';
     }
 
-    file_put_contents($sessionfile,json_encode([
-        'courses'=>$courses,
-        'tmpdir'=>$tmpdir,
-        'done'=>$done
-    ]));
-
+file_put_contents($sessionfile,json_encode([
+    'courses'=>$courses,
+    'tmpdir'=>$tmpdir,
+    'done'=>$done,
+    'finished'=>false
+]));
     $mbzfiles = [];
     $map = [];
     $categories = [];
@@ -166,33 +166,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || $sessionid) {
     file_put_contents($pluginfile,json_encode($plugins,JSON_PRETTY_PRINT));
 
     /* ---------- ZIP ---------- */
+$backupdir = $CFG->dataroot.'/migrationtool/backups';
 
-    $backupdir = $CFG->dataroot.'/migrationtool/backups';
+if (!is_dir($backupdir)) {
+    mkdir($backupdir,0775,true);
+}
 
-    if (!is_dir($backupdir)) {
-        mkdir($backupdir,0775,true);
-    }
+$zipfile = $backupdir.'/courses_export_'.time().'.zip';
 
-    $zipfile = $backupdir.'/courses_export_'.time().'.zip';
+$zipservice =
+    new \local_migrationtool\service\zip_service();
 
-    $zip = new ZipArchive();
+$zipservice->create_zip(
+    $zipfile,
+    $tmpdir,
+    [
+        'moodle_categories.json' => $catsfile,
+        'course_category_map.txt' => $mapfile,
+        'plugins.json' => $pluginfile
+    ]
+);
 
-    if ($zip->open($zipfile, ZipArchive::CREATE) !== TRUE) {
-        throw new moodle_exception('Cannot create ZIP file');
-    }
-
-    foreach (glob($tmpdir."/*.mbz") as $file) {
-        $zip->addFile($file,"courses/".basename($file));
-    }
-
-    $zip->addFile($catsfile,"moodle_categories.json");
-    $zip->addFile($mapfile,"course_category_map.txt");
-    $zip->addFile($pluginfile,"plugins.json");
-
-    $zip->close();
-
-    unlink($sessionfile);
-
+file_put_contents($sessionfile,json_encode([
+    'courses'=>$courses,
+    'tmpdir'=>$tmpdir,
+    'done'=>$done,
+    'finished'=>true
+]));
+unlink($sessionfile);
     echo $OUTPUT->notification("ZIP utworzony",'notifysuccess');
 
     $url = new moodle_url('/local/migrationtool/download.php',
@@ -203,9 +204,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || $sessionid) {
 
 }else{
 /* ---------- detect unfinished export ---------- */
-
 $sessions = glob($sessiondir.'export_*.json');
 
+$validsessions = [];
+
+foreach ($sessions as $file) {
+
+    if (!file_exists($file)) {
+        continue;
+    }
+
+    $data = json_decode(file_get_contents($file), true);
+
+    // jeśli JSON jest uszkodzony → ignoruj
+    if (!is_array($data)) {
+        continue;
+    }
+
+    // usuń stare sesje
+    if (!empty($data['finished']) && $data['finished'] === true) {
+        continue;
+    }
+
+    // tylko realnie nieukończone
+    $validsessions[] = $file;
+}
+
+$sessions = $validsessions;
 if ($sessions && !$sessionid) {
 
     $lastsession = basename($sessions[0], '.json');
