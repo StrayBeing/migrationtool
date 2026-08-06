@@ -1,34 +1,28 @@
 <?php
-require_once($CFG->dirroot.'/course/lib.php');
-require_once($CFG->libdir.'/formslib.php');
+//appearance change later
+namespace local_migrationtool\form;
 
-class export_form extends moodleform {
+defined('MOODLE_INTERNAL') || die();
 
-    public function definition() {
+require_once($CFG->libdir . '/formslib.php');
+
+class export_form extends \moodleform {
+    public function definition(): void {
+        global $DB;
 
         $mform = $this->_form;
-
-        $courses = get_courses();
-        $list = [];
+        $courses = $DB->get_records_select('course', 'id <> :siteid', ['siteid' => SITEID], 'fullname ASC', 'id, fullname, shortname');
+        $options = [];
         foreach ($courses as $course) {
-            $list[$course->id] = $course->fullname;
+            $options[$course->id] = format_string($course->fullname) . ' [' . s($course->shortname) . ']';
         }
 
-        $mform->addElement('select',
-            'courseid',
-            'Course to export',
-            $list
-        );
+        $mform->addElement('autocomplete', 'courses', get_string('selectcourses', 'local_migrationtool'), $options, [
+            'multiple' => true,
+        ]);
+        $mform->addRule('courses', null, 'required', null, 'client');
+        $mform->setType('courses', PARAM_INT);
 
-        $mform->addElement('select',
-            'mode',
-            'Export mode',
-            [
-                'structure' => 'Structure only',
-                'full' => 'Full backup'
-            ]
-        );
-
-        $this->add_action_buttons(true, 'Export course');
+        $this->add_action_buttons(true, get_string('exportsubmit', 'local_migrationtool'));
     }
 }

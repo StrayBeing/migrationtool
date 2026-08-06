@@ -1,67 +1,90 @@
 <?php
+
 namespace local_migrationtool;
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->dirroot.'/backup/util/includes/backup_includes.php');
-
 class backup_manager {
+    private const EXCLUDED_SETTINGS = [
+        'anonymize',
+        'role_assignments',
+        'comments',
+        'calendarevents',
+        'userscompletion',
+        'logs',
+        'grade_histories',
+        'groups',
+        'xapistate',
+        'users',
+    ];
 
-    /**
-     * Eksport pojedynczego kursu do pliku .mbz
-     */
-public function export_course($courseid, $tmpdir) {
-    global $USER;
+    public function export_course(int $courseid, string $destinationdir): array {
+        global $CFG, $USER;
 
-    $bc = new \backup_controller(
-        \backup::TYPE_1COURSE,
-        $courseid,
-        \backup::FORMAT_MOODLE,
-        \backup::INTERACTIVE_NO,
-        \backup::MODE_GENERAL,
-        $USER->id
-    );
+        require_once($CFG->dirroot . '/backup/util/includes/backup_includes.php');
+        make_writable_directory($destinationdir);
 
-    $bc->execute_plan();
-    $results = $bc->get_results();
-    $file = $results['backup_destination'];
+        $controller = null;
+        $started = microtime(true);
+        try {
+            $controller = new \backup_controller(
+                \backup::TYPE_1COURSE,
+                $courseid,
+                \backup::FORMAT_MOODLE,
+                \backup::INTERACTIVE_NO,
+                \backup::MODE_GENERAL,
+                $USER->id,
+                \backup::RELEASESESSION_NO
+            );
 
-    // Zapisz mbz w katalogu tymczasowym z unikalną nazwą
-    $mbzpath = $tmpdir.'/course_'.$courseid.'_'.uniqid().'.mbz';
-    file_put_contents($mbzpath, $file->get_content());
+            $this->exclude_user_data($controller);
+            $controller->execute_plan();
+            $results = $controller->get_results();
+            if (empty($results['backup_destination']) || !($results['backup_destination'] instanceof \stored_file)) {
+                throw new \moodle_exception('backupfailed', 'backup');
+            }
 
-    return $mbzpath;
-}
-    /**
-     * Eksport wielu kursów do jednego ZIP
-     */
-    public function export_courses_zip(array $courseids) {
-        global $CFG;
+            $filename = 'course_' . $courseid . '.mbz';
+            $filepath = $destinationdir . '/' . $filename;
+            $results['backup_destination']->copy_content_to($filepath);
+            if (!is_readable($filepath) || filesize($filepath) === 0) {
+                throw new \moodle_exception('backupfailed', 'backup');
+            }
 
-        $tempdir = $CFG->dataroot.'/migrationtool/tmp/'.uniqid();
-        if (!is_dir($tempdir)) {
-            mkdir($tempdir, 0775, true);
+            return [
+                'filename' => $filename,
+                'filepath' => $filepath,
+                'sha256' => hash_file('sha256', $filepath),
+                'size' => filesize($filepath),
+                'duration' => round(microtime(true) - $started, 3),
+            ];
+        } finally {
+            if ($controller) {
+                $controller->destroy();
+            }
+        }
+    }
+
+    private function exclude_user_data(\backup_controller $controller): void {
+        $settings = [];
+        foreach ($controller->get_plan()->get_settings() as $setting) {
+            $settings[$setting->get_name()] = $setting;
         }
 
-        $mbzfiles = [];
-
-        foreach ($courseids as $cid) {
-            $mbz = $this->export_course($cid);
-            $mbzfiles[] = $mbz;
+        foreach (self::EXCLUDED_SETTINGS as $name) {
+            if (!isset($settings[$name])) {
+                continue;
+            }
+            if ($settings[$name]->get_status() === \base_setting::NOT_LOCKED) {
+                $settings[$name]->set_value(false);
+            }
         }
 
-        $zipfile = $CFG->dataroot.'/migrationtool/backups/courses_export_'.time().'.zip';
-        $zip = new \ZipArchive();
-        if ($zip->open($zipfile, \ZipArchive::CREATE) !== true) {
-            throw new \moodle_exception('Cannot create ZIP file');
+        foreach (self::EXCLUDED_SETTINGS as $name) {
+            if (isset($settings[$name]) && (bool)$settings[$name]->get_value()) {
+                throw new \moodle_exception('generalexceptionmessage', 'error', '',
+                    'The backup setting "' . $name . '" could not be disabled.');
+            }
         }
-
-        foreach ($mbzfiles as $mbz) {
-            $zip->addFile($mbz, basename($mbz));
-        }
-
-        $zip->close();
-
-        return $zipfile;
     }
 }
