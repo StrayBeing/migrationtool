@@ -9,6 +9,13 @@ class package_service {
         $zipservice = new zip_service();
         $entries = $zipservice->validate_and_extract($zipfile, $destination);
         $manifest = $this->load_manifest($destination . '/manifest.json');
+        $rawscope = (array)($manifest['scope'] ?? []);
+        // Packages from version 0.2.x did not contain the blocks key and always included blocks.
+        if (!array_key_exists('blocks', $rawscope)) {
+            $rawscope['blocks'] = true;
+        }
+        scope_service::validate_package_scope($rawscope);
+        $manifest['scope'] = scope_service::normalise($rawscope);
         $this->validate_manifest($manifest, $destination, $entries);
         return $manifest;
     }
@@ -31,13 +38,6 @@ class package_service {
             throw new \moodle_exception('invalidpackage', 'local_migrationtool');
         }
 
-        $requiredfalse = ['users', 'enrolments', 'role_assignments', 'user_completion', 'logs',
-            'comments', 'grade_histories', 'xapi_user_state'];
-        foreach ($requiredfalse as $key) {
-            if (!array_key_exists($key, $manifest['scope']) || (bool)$manifest['scope'][$key]) {
-                throw new \moodle_exception('invalidpackage', 'local_migrationtool');
-            }
-        }
 
         $listed = [];
         foreach ($manifest['courses'] as $course) {
@@ -51,7 +51,8 @@ class package_service {
                 throw new \moodle_exception('invalidpackage', 'local_migrationtool');
             }
             $expected = strtolower((string)($course['sha256'] ?? ''));
-            if (!preg_match('/^[a-f0-9]{64}$/', $expected) || !hash_equals($expected, hash_file('sha256', $path))) {
+            if (!preg_match('/^[a-f0-9]{64}$/', $expected) ||
+                    !hash_equals($expected, hash_file('sha256', $path))) {
                 throw new \moodle_exception('invalidpackage', 'local_migrationtool');
             }
             if ((int)($course['size'] ?? -1) !== filesize($path)) {

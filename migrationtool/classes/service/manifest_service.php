@@ -7,13 +7,14 @@ defined('MOODLE_INTERNAL') || die();
 class manifest_service {
     public const SCHEMA_VERSION = 1;
 
-    public function build(array $courseids, array $backups): array {
+    public function build(array $courseids, array $backups, array $scope): array {
         global $CFG, $DB;
 
+        $scope = scope_service::normalise($scope);
         $categoryservice = new category_service();
         $pluginservice = new plugin_service();
         $categories = $categoryservice->export_for_courses($courseids);
-        $components = $pluginservice->collect_for_courses($courseids);
+        $components = $pluginservice->collect_for_courses($courseids, $scope);
 
         $courses = [];
         foreach ($courseids as $courseid) {
@@ -45,8 +46,8 @@ class manifest_service {
             'created_at' => date('c'),
             'generator' => [
                 'component' => 'local_migrationtool',
-                'version' => 2026080600,
-                'release' => '0.2.0',
+                'version' => 2026080602,
+                'release' => '0.3.0',
             ],
             'source' => [
                 'moodle_version' => (string)$CFG->version,
@@ -55,21 +56,7 @@ class manifest_service {
                 'php_version' => PHP_VERSION,
                 'site_hash' => hash('sha256', (string)$CFG->wwwroot),
             ],
-            'scope' => [
-                'course_structure' => true,
-                'activities' => true,
-                'files' => true,
-                'question_bank' => true,
-                'groups' => false,
-                'users' => false,
-                'enrolments' => false,
-                'role_assignments' => false,
-                'user_completion' => false,
-                'logs' => false,
-                'comments' => false,
-                'grade_histories' => false,
-                'xapi_user_state' => false,
-            ],
+            'scope' => $scope,
             'courses' => $courses,
             'categories' => $categories,
             'components' => $components,

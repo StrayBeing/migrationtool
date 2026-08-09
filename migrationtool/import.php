@@ -1,5 +1,5 @@
 <?php
-	
+
 require('../../config.php');
 
 require_login();
@@ -39,7 +39,11 @@ if ($action === 'execute') {
             if (!$targetcategory) {
                 throw new moodle_exception('invalidcategoryid');
             }
-            $restored = $restoremanager->restore_course($job['package_dir'] . '/' . $course['backup_file'], $targetcategory);
+            $restored = $restoremanager->restore_course(
+                $job['package_dir'] . '/' . $course['backup_file'],
+                $targetcategory,
+                $job['manifest']['scope']
+            );
             $results[] = array_merge([
                 'source_course_id' => $sourceid,
                 'fullname' => $course['fullname'],

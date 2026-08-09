@@ -22,10 +22,43 @@ $summary->data = [
     ['Data', s($report['created_at'] ?? '')],
     ['Typ', s($report['type'] ?? '')],
     ['Status', s($report['status'] ?? '')],
-    ['Moodle źródłowy', s(($report['source']['moodle_release'] ?? '') . ' (' . ($report['source']['moodle_version'] ?? '') . ')')],
-    ['Moodle docelowy', s(($report['target']['moodle_release'] ?? '') . ' (' . ($report['target']['moodle_version'] ?? '') . ')')],
 ];
+if (!empty($report['source'])) {
+    $summary->data[] = [
+        'Moodle źródłowy',
+        s(($report['source']['moodle_release'] ?? '') . ' (' . ($report['source']['moodle_version'] ?? '') . ')'),
+    ];
+}
+if (!empty($report['target'])) {
+    $summary->data[] = [
+        'Moodle docelowy',
+        s(($report['target']['moodle_release'] ?? '') . ' (' . ($report['target']['moodle_version'] ?? '') . ')'),
+    ];
+}
 echo html_writer::table($summary);
+
+if (!empty($report['scope'])) {
+    echo html_writer::tag('h4', get_string('reportscope', 'local_migrationtool'));
+    $scopetable = new html_table();
+    $scopetable->head = [get_string('scopeelement', 'local_migrationtool'), get_string('scopeincluded', 'local_migrationtool')];
+    $labels = [
+        'course_structure' => 'scopestructure',
+        'activities' => 'scopeactivities',
+        'files' => 'scopefiles',
+        'question_bank' => 'scopequestionbank',
+        'blocks' => 'scopeblocks',
+        'users' => 'scopeusers',
+        'enrolments' => 'scopeenrolments',
+        'grade_histories' => 'scopegradehistories',
+    ];
+    foreach ($labels as $key => $stringkey) {
+        $scopetable->data[] = [
+            get_string($stringkey, 'local_migrationtool'),
+            !empty($report['scope'][$key]) ? get_string('yes') : get_string('no'),
+        ];
+    }
+    echo html_writer::table($scopetable);
+}
 
 if (!empty($report['errors'])) {
     echo html_writer::tag('h4', 'Błędy');
@@ -52,7 +85,7 @@ if (!empty($report['checks']['components'])) {
     echo html_writer::table($table);
 }
 
-$courseitems = $report['courses'] ?? $report['checks']['backups'] ?? [];
+$courseitems = $report['courses'] ?? ($report['checks']['backups'] ?? []);
 if (!empty($courseitems)) {
     echo html_writer::tag('h4', 'Kursy');
     $table = new html_table();
@@ -77,6 +110,7 @@ $downloadurl = new moodle_url('/local/migrationtool/download.php', [
     'sesskey' => sesskey(),
 ]);
 echo html_writer::div(html_writer::link($downloadurl, get_string('downloadreport', 'local_migrationtool')), 'mt-3');
-echo html_writer::div(html_writer::link(new moodle_url('/local/migrationtool/report.php'), get_string('back', 'local_migrationtool')), 'mt-3');
+echo html_writer::div(html_writer::link(new moodle_url('/local/migrationtool/report.php'),
+    get_string('back', 'local_migrationtool')), 'mt-3');
 
 echo $OUTPUT->footer();

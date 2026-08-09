@@ -26,6 +26,7 @@ if ($data = $mform->get_data()) {
     if (empty($courseids)) {
         throw new invalid_parameter_exception('No courses selected.');
     }
+    $scope = \local_migrationtool\service\scope_service::from_form($data);
 
     $jobid = \local_migrationtool\service\storage_service::new_id('export');
     $jobdir = \local_migrationtool\service\storage_service::create_job_dir($jobid);
@@ -36,11 +37,11 @@ if ($data = $mform->get_data()) {
     $backups = [];
     $started = microtime(true);
     foreach ($courseids as $courseid) {
-        $backups[$courseid] = $manager->export_course($courseid, $coursedir);
+        $backups[$courseid] = $manager->export_course($courseid, $coursedir, $scope);
     }
 
     $manifestservice = new \local_migrationtool\service\manifest_service();
-    $manifest = $manifestservice->build($courseids, $backups);
+    $manifest = $manifestservice->build($courseids, $backups, $scope);
     $manifestservice->save($jobdir . '/manifest.json', $manifest);
 
     $relativefiles = ['manifest.json'];
@@ -64,14 +65,19 @@ if ($data = $mform->get_data()) {
         'courses' => $manifest['courses'],
         'duration' => round(microtime(true) - $started, 3),
     ];
-//add report
     $reportid = (new \local_migrationtool\service\report_service())->save($report);
 
-    $downloadurl = new moodle_url('/local/migrationtool/download.php', ['type' => 'package', 'file' => $filename, 'sesskey' => sesskey()]);
+    $downloadurl = new moodle_url('/local/migrationtool/download.php', [
+        'type' => 'package',
+        'file' => $filename,
+        'sesskey' => sesskey(),
+    ]);
     $reporturl = new moodle_url('/local/migrationtool/report_view.php', ['id' => $reportid]);
-    $output .= $OUTPUT->notification(get_string('scopeinfo', 'local_migrationtool'), 'info');
-    $output .= html_writer::div(html_writer::link($downloadurl, get_string('downloadpackage', 'local_migrationtool')), 'mb-3');
-    $output .= html_writer::div(html_writer::link($reporturl, get_string('reportdetails', 'local_migrationtool')), 'mb-3');
+    $output .= $OUTPUT->notification(get_string('exportcreated', 'local_migrationtool'), 'success');
+    $output .= html_writer::div(html_writer::link($downloadurl,
+        get_string('downloadpackage', 'local_migrationtool')), 'mb-3');
+    $output .= html_writer::div(html_writer::link($reporturl,
+        get_string('reportdetails', 'local_migrationtool')), 'mb-3');
 
     \local_migrationtool\service\storage_service::remove_tree($jobdir);
 }

@@ -1,5 +1,16 @@
 # Changelog
+## 0.3.0 — 2026-08-06
 
+- Added administrator-selectable export scope for activities/resources, files, question bank and blocks.
+- Kept course structure mandatory and user-related data permanently excluded.
+- Applied the selected scope directly to Moodle backup settings.
+- Stored and validated the selected scope in `manifest.json`.
+- Re-applied and verified the scope during restore where the target Moodle exposes the corresponding setting.
+- Limited component compatibility analysis to components included in the selected scope.
+- Expanded question-type discovery to the course question bank and questions referenced by quizzes.
+- Added a scope table to export, simulation and migration report views.
+- Added scope-specific tests and documentation.
+ 
 ## 0.2.0 — 2026-08-06
 
 - Reworked export and import around a versioned `manifest.json`.

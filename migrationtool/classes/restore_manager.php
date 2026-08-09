@@ -17,7 +17,7 @@ class restore_manager {
         'users',
     ];
 
-    public function restore_course(string $filepath, int $categoryid): array {
+    public function restore_course(string $filepath, int $categoryid, array $scope): array {
         global $CFG, $DB, $USER;
 
         require_once($CFG->dirroot . '/backup/util/includes/restore_includes.php');
@@ -27,6 +27,7 @@ class restore_manager {
             throw new \moodle_exception('filenotfound', 'error');
         }
         \core_course_category::get($categoryid, MUST_EXIST, true);
+        $scope = \local_migrationtool\service\scope_service::normalise($scope);
 
         $started = microtime(true);
         $tempdirname = \restore_controller::get_tempdir_name(SITEID, $USER->id);
@@ -57,7 +58,7 @@ class restore_manager {
                 null,
                 \backup::RELEASESESSION_NO
             );
-            $this->exclude_user_data($controller);
+            $this->configure_settings($controller, $scope);
 
             $passed = $controller->execute_precheck();
             $precheck = $controller->get_precheck_results();
@@ -79,7 +80,8 @@ class restore_manager {
                 try {
                     delete_course($courseid, false);
                 } catch (\Throwable $cleanup) {
-                    debugging('Could not remove failed restored course ' . $courseid . ': ' . $cleanup->getMessage(), DEBUG_DEVELOPER);
+                    debugging('Could not remove failed restored course ' . $courseid . ': ' .
+                        $cleanup->getMessage(), DEBUG_DEVELOPER);
                 }
             }
             throw $e;
@@ -93,21 +95,48 @@ class restore_manager {
         }
     }
 
-    private function exclude_user_data(\restore_controller $controller): void {
+    private function configure_settings(\restore_controller $controller, array $scope): void {
         $settings = [];
         foreach ($controller->get_plan()->get_settings() as $setting) {
             $settings[$setting->get_name()] = $setting;
         }
+
         foreach (self::EXCLUDED_SETTINGS as $name) {
-            if (isset($settings[$name]) && $settings[$name]->get_status() === \base_setting::NOT_LOCKED) {
-                $settings[$name]->set_value(false);
+            $this->set_false_if_available($settings, $name, true, true);
+        }
+
+        foreach (\local_migrationtool\service\scope_service::moodle_settings($scope) as $name => $enabled) {
+            if (!$enabled) {
+                //not every source setting during restore in some cases, check later
+                $this->set_false_if_available($settings, $name, false, $name === 'questionbank');
+            } else if (isset($settings[$name]) && !(bool)$settings[$name]->get_value()) {
+                throw new \moodle_exception('generalexceptionmessage', 'error', '',
+                    get_string('restorescopemismatch', 'local_migrationtool', $name));
             }
         }
-        foreach (self::EXCLUDED_SETTINGS as $name) {
-            if (isset($settings[$name]) && (bool)$settings[$name]->get_value()) {
+    }
+
+    private function set_false_if_available(array $settings, string $name, bool $verify,
+            bool $allowmissing): void {
+        if (!isset($settings[$name])) {
+            if (!$allowmissing) {
                 throw new \moodle_exception('generalexceptionmessage', 'error', '',
-                    'The restore setting "' . $name . '" could not be disabled.');
+                    get_string('restorescopemismatch', 'local_migrationtool', $name));
             }
+            return;
+        }
+
+        $setting = $settings[$name];
+        if ($setting->get_status() === \base_setting::NOT_LOCKED) {
+            $setting->set_value(false);
+        }
+        if ($verify && (bool)$setting->get_value()) {
+            throw new \moodle_exception('generalexceptionmessage', 'error', '',
+                get_string('restoresettingnotdisabled', 'local_migrationtool', $name));
+        }
+        if (!$verify && (bool)$setting->get_value()) {
+            throw new \moodle_exception('generalexceptionmessage', 'error', '',
+                get_string('restorescopemismatch', 'local_migrationtool', $name));
         }
     }
 
