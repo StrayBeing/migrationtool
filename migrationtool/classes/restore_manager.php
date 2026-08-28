@@ -106,9 +106,12 @@ class restore_manager {
         }
 
         foreach (\local_migrationtool\service\scope_service::moodle_settings($scope) as $name => $enabled) {
-            if (!$enabled) {
+              if ($name === 'files') {
+        	continue;
+    	    }
+	      if (!$enabled) {
                 //not every source setting during restore in some cases, check later
-                $this->set_false_if_available($settings, $name, false, $name === 'questionbank');
+		$this->set_false_if_available($settings, $name, false, $name === 'questionbank');
             } else if (isset($settings[$name]) && !(bool)$settings[$name]->get_value()) {
                 throw new \moodle_exception('generalexceptionmessage', 'error', '',
                     get_string('restorescopemismatch', 'local_migrationtool', $name));
